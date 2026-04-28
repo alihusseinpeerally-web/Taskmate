@@ -1,0 +1,1559 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>TaskMate — Mauritius's micro-task platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+          body: ['"DM Sans"', 'system-ui', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'monospace'],
+        },
+        colors: {
+          teal: { DEFAULT:'#0A6E6E', 50:'#E8F2F2', 100:'#C9E0E0', 600:'#0A6E6E', 700:'#085858', 800:'#064444', 900:'#042B2B' },
+          coral:{ DEFAULT:'#FF6B35', 50:'#FFF1EC', 100:'#FFE0D3', 500:'#FF6B35', 600:'#F05520' },
+          cream: '#F5F3F0',
+          ink:   '#1A1F1F',
+        },
+      },
+    },
+  };
+</script>
+<style>
+  html, body { margin: 0; background: #F5F3F0; font-family: 'DM Sans', sans-serif; color: #1A1F1F; }
+  * { -webkit-tap-highlight-color: transparent; }
+  .font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+  .font-mono    { font-family: 'JetBrains Mono', monospace; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: rgba(10,110,110,0.18); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(10,110,110,0.32); }
+
+  @keyframes slideIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+  @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
+  @keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:.55} }
+  @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+  .anim-in { animation: slideIn 320ms cubic-bezier(.22,.9,.32,1) both; }
+  .anim-fade { animation: fadeIn 240ms ease both; }
+  .anim-pulse{ animation: pulse 1.4s ease-in-out infinite; }
+
+  .grain {
+    background-image:
+      radial-gradient(1px 1px at 25% 35%, rgba(0,0,0,0.04) 50%, transparent 51%),
+      radial-gradient(1px 1px at 70% 70%, rgba(0,0,0,0.03) 50%, transparent 51%);
+    background-size: 6px 6px, 7px 7px;
+  }
+
+  .shimmer {
+    background: linear-gradient(90deg, #eee 0%, #f7f7f7 50%, #eee 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+
+  /* keep main column from getting unreadably wide on big screens */
+  .max-content { max-width: 1180px; }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useEffect, useRef } = React;
+
+/* =====================================================================
+   TaskMate — Web App (Mauritius)
+   A two-sided micro-task marketplace for time-poor professionals.
+   ===================================================================== */
+
+/* ---------- formatters ---------- */
+const fmtRs = (v) => `Rs\u00A0${Number(v||0).toLocaleString('en-IN')}`;
+const fmtTime = (m) => {
+  if (!m && m !== 0) return '—';
+  const h = Math.floor(m/60), r = m%60;
+  if (h && r) return `${h}h ${r}m`;
+  if (h) return `${h}h`;
+  return `${r}m`;
+};
+
+/* ---------- icons (inline svgs, no external libs) ---------- */
+const Ico = {
+  home:    (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M3 11l9-8 9 8v10a2 2 0 01-2 2h-4v-7h-6v7H5a2 2 0 01-2-2z"/></svg>,
+  list:    (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>,
+  chat:    (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>,
+  user:    (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+  shield:  (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+  star:    (p) => <svg viewBox="0 0 24 24" fill="currentColor" {...p}><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.62L12 2 9.19 8.62 2 9.24l5.46 4.73L5.82 21z"/></svg>,
+  check:   (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2.5} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M20 6L9 17l-5-5"/></svg>,
+  plus:    (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2.4} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M12 5v14M5 12h14"/></svg>,
+  clock:   (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>,
+  lock:    (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>,
+  badge:   (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="9" r="6"/><path d="M9 14l-2 7 5-3 5 3-2-7"/></svg>,
+  info:    (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>,
+  pin:     (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>,
+  search:  (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>,
+  bolt:    (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M13 2L3 14h8l-1 8 10-12h-8z"/></svg>,
+  alert:   (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>,
+  globe:   (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20"/></svg>,
+  back:    (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M19 12H5M12 19l-7-7 7-7"/></svg>,
+  chev:    (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M9 18l6-6-6-6"/></svg>,
+  x:       (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M18 6L6 18M6 6l12 12"/></svg>,
+  msg:     (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>,
+  hand:    (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M18 11V6a2 2 0 10-4 0v5M14 10V4a2 2 0 10-4 0v6M10 10.5V6a2 2 0 10-4 0v8M18 8a2 2 0 114 0v6a8 8 0 01-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 012.83-2.82L7 15"/></svg>,
+  clean:   (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M3 21h18M5 21V8l4-5h6l4 5v13M9 13h6"/></svg>,
+  cart:    (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 002 1.6h9.7a2 2 0 002-1.6L23 6H6"/></svg>,
+  doc:     (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg>,
+  wrench:  (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94L14.7 6.3z"/></svg>,
+  truck:   (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7zM6 21a2 2 0 100-4 2 2 0 000 4zM18 21a2 2 0 100-4 2 2 0 000 4z"/></svg>,
+  laptop:  (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg>,
+  basket:  (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.sw||2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M3 6h18l-2 13a2 2 0 01-2 2H7a2 2 0 01-2-2L3 6zM8 6V4a4 4 0 018 0v2"/></svg>,
+};
+
+/* ---------- categories ---------- */
+/* category set */
+const CATS = [
+  { id:'cleaning', label:'Home cleaning',     glyph: Ico.clean,  tint:'#E8F2F2', ink:'#085858' },
+  { id:'errands',  label:'Errands & queues',  glyph: Ico.pin,    tint:'#FFF1EC', ink:'#F05520' },
+  { id:'grocery',  label:'Grocery & basket',  glyph: Ico.basket, tint:'#FEF3DC', ink:'#8A6313' },
+  { id:'laundry',  label:'Laundry & ironing', glyph: Ico.cart,   tint:'#EDE8F4', ink:'#553B7E' },
+  { id:'docdrop',  label:'Document drop-off', glyph: Ico.doc,    tint:'#E5EEF6', ink:'#1F4773' },
+  { id:'tech',     label:'IT & admin help',   glyph: Ico.laptop, tint:'#E8F2F2', ink:'#085858' },
+  { id:'handyman', label:'Handyman',          glyph: Ico.wrench, tint:'#F2EAE0', ink:'#6E4A1B' },
+  { id:'moving',   label:'Moving help',       glyph: Ico.truck,  tint:'#EDE8F4', ink:'#553B7E' },
+];
+const catById = (id) => CATS.find(c => c.id === id) || CATS[0];
+
+/* ---------- service tiers (Standard/Priority/Same-day) ---------- */
+const TIERS = [
+  { id:'std', label:'Standard', sub:'Within 24-48h', mult:1.00, ring:'#0A6E6E' },
+  { id:'pri', label:'Priority', sub:'Within 6h',      mult:1.30, ring:'#FF6B35' },
+  { id:'sda', label:'Same-day', sub:'Today, ASAP',    mult:1.55, ring:'#1A1F1F' },
+];
+
+/* ---------- industry options ---------- */
+const SUBSECTORS = [
+  'Legal services','Accounting & audit','Management consultancy',
+  'Engineering','Scientific R&D','Advertising & marketing',
+];
+
+/* ---------- mock taskers ---------- */
+const TASKERS = [
+  { id:'t1', name:'Priya Ramdoyal',    rating:4.92, reviews:184, area:'Curepipe',     tier:'Gold',   verifs:6, hourly:280, eta:35,  blurb:'Specialist in deep cleaning & quick weekday turnarounds.' },
+  { id:'t2', name:'Reza Beebeejaun',   rating:4.87, reviews:142, area:'Quatre Bornes', tier:'Gold',   verifs:6, hourly:320, eta:50,  blurb:'10+ years handyman, electrical & plumbing micro-jobs.' },
+  { id:'t3', name:'Yannick Larose',    rating:4.78, reviews:96,  area:'Port Louis',    tier:'Silver', verifs:5, hourly:240, eta:25,  blurb:'Errands & document drops in greater Port Louis area.' },
+  { id:'t4', name:'Aïsha Soobhug',     rating:4.95, reviews:211, area:'Ebene',         tier:'Gold',   verifs:6, hourly:300, eta:40,  blurb:'IT setup, admin help & form-filling for professionals.' },
+  { id:'t5', name:'Devesh Bhugaloo',   rating:4.69, reviews:53,  area:'Rose Hill',     tier:'Silver', verifs:5, hourly:220, eta:30,  blurb:'Grocery runs, laundry pick-up, fast on weekday lunchtimes.' },
+  { id:'t6', name:'Sandrine Marot',    rating:4.83, reviews:118, area:'Grand Baie',    tier:'Silver', verifs:5, hourly:260, eta:55,  blurb:'Moving help with own light van, weekends preferred.' },
+];
+
+/* ---------- mock active bookings (for "My tasks") ---------- */
+const seedBookings = () => ([
+  { id:'b1', cat:'cleaning', title:'Apartment deep clean — 2 bed', tasker:'Priya Ramdoyal', tierId:'pri', status:'In progress',  fee:1400, timeSavedMin:165, when:'Today, 14:00–17:30', area:'Ebene' },
+  { id:'b2', cat:'docdrop',  title:'Drop NIC renewal at Civil Status', tasker:'Yannick Larose', tierId:'sda', status:'Tasker en-route', fee:550, timeSavedMin:95, when:'Today, 11:00', area:'Port Louis' },
+  { id:'b3', cat:'grocery',  title:'Weekly grocery — Winners list',  tasker:'Devesh Bhugaloo', tierId:'std', status:'Awaiting confirmation', fee:480, timeSavedMin:75, when:'Tomorrow, 09:30', area:'Rose Hill' },
+]);
+
+/* =====================================================================
+   UI primitives
+   ===================================================================== */
+
+function Btn({ children, variant='primary', size='md', icon, onClick, type='button', disabled, className='' }) {
+  const base = 'font-display font-semibold inline-flex items-center justify-center gap-2 transition active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none';
+  const sizes = {
+    lg: 'h-12 rounded-xl text-[15px] px-6',
+    md: 'h-10 rounded-lg text-[14px] px-4',
+    sm: 'h-8 rounded-lg text-[12.5px] px-3',
+  };
+  const variants = {
+    primary: 'bg-coral text-white shadow-[0_8px_18px_-8px_rgba(255,107,53,0.55)] hover:bg-coral-600',
+    teal:    'bg-teal-700 text-white shadow-[0_8px_18px_-8px_rgba(10,110,110,0.55)] hover:bg-teal-800',
+    dark:    'bg-ink text-white hover:bg-black',
+    ghost:   'bg-white text-ink ring-1 ring-black/10 hover:bg-neutral-50',
+    outline: 'bg-transparent text-teal-700 ring-1 ring-teal-700/40 hover:bg-teal-50',
+    soft:    'bg-teal-50 text-teal-700 hover:bg-teal-100',
+  };
+  return (
+    <button type={type} disabled={disabled} onClick={onClick}
+      className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}>
+      {icon && <span className="inline-flex w-4 h-4">{icon}</span>}
+      {children}
+    </button>
+  );
+}
+
+function Avatar({ name='??', size=40, ring }) {
+  const letters = (name||'??').split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
+  return (
+    <div style={{ width:size, height:size, borderRadius:'50%', background:'#DCEFEC',
+      display:'flex',alignItems:'center',justifyContent:'center', fontFamily:'"Plus Jakarta Sans"',
+      fontWeight:700, fontSize:size*0.36, color:'#1A1F1F', flexShrink:0,
+      boxShadow: ring ? `0 0 0 2.5px ${ring}, 0 0 0 4.5px white` : 'inset 0 0 0 1px rgba(0,0,0,0.04)' }}>
+      {letters}
+    </div>
+  );
+}
+
+function CatIcon({ cat, size=44, rounded=12 }) {
+  const Glyph = cat.glyph;
+  return (
+    <div style={{ width:size, height:size, borderRadius:rounded, background:cat.tint, color:cat.ink,
+      display:'flex',alignItems:'center',justifyContent:'center', flexShrink:0 }}>
+      <div style={{ width:size*0.5, height:size*0.5 }}><Glyph /></div>
+    </div>
+  );
+}
+
+function TierBadge({ tier }) {
+  const tones = {
+    Bronze:{ bg:'#F2E2D0', ink:'#7A4B1F' },
+    Silver:{ bg:'#E5E7EA', ink:'#3F4853' },
+    Gold:  { bg:'#FBE8B6', ink:'#7A5A0F' },
+  };
+  const t = tones[tier] || tones.Silver;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full font-display font-bold px-2 py-0.5 text-[10.5px]"
+      style={{ background:t.bg, color:t.ink }}>
+      <Ico.badge width="10" height="10" sw="2.6" />
+      {tier}
+    </span>
+  );
+}
+
+function Rating({ value=5, count, size=12 }) {
+  return (
+    <div className="inline-flex items-center gap-1">
+      <Ico.star width={size} height={size} className="text-[#F5A623]" />
+      <span className="font-display font-bold text-[13px] text-ink">{Number(value).toFixed(2)}</span>
+      {count != null && <span className="text-[12px] text-neutral-500">({count})</span>}
+    </div>
+  );
+}
+
+function VerifiedChip({ children }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 text-teal-700 px-2 py-0.5 text-[11px] font-display font-semibold">
+      <Ico.check width="11" height="11" sw="3" /> {children}
+    </span>
+  );
+}
+
+/* Time-saved chip — surfaced on every booking */
+function TimeSavedChip({ minutes }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-coral-50 text-coral-600 px-2.5 py-1 text-[11.5px] font-display font-semibold">
+      <Ico.clock width="12" height="12" sw="2.4" />
+      ~{fmtTime(minutes)} saved
+    </span>
+  );
+}
+
+/* Toast */
+function Toast({ msg, onClose }) {
+  useEffect(() => { if (!msg) return; const t=setTimeout(onClose,2400); return ()=>clearTimeout(t); }, [msg]);
+  if (!msg) return null;
+  return (
+    <div className="fixed left-1/2 -translate-x-1/2 bottom-8 z-[80] anim-in"
+      style={{ background:'#1A1F1F', color:'#fff', padding:'10px 16px', borderRadius:14,
+        fontFamily:'"Plus Jakarta Sans"', fontWeight:600, fontSize:13,
+        boxShadow:'0 20px 40px -15px rgba(0,0,0,0.5)' }}>
+      {msg}
+    </div>
+  );
+}
+
+/* =====================================================================
+   Layout: web-app shell — sidebar (desktop) + topbar
+   ===================================================================== */
+
+function AppShell({ active, onNav, lang, setLang, children, onPost }) {
+  const navItems = [
+    { id:'home',     label:'Discover',    icon:Ico.home },
+    { id:'tasks',    label:'My tasks',    icon:Ico.list },
+    { id:'messages', label:'Messages',    icon:Ico.chat },
+    { id:'profile',  label:'Profile',     icon:Ico.user },
+    { id:'safety',   label:'Trust & safety', icon:Ico.shield },
+    { id:'taskers',  label:'For taskers', icon:Ico.hand },
+  ];
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      {/* ---- Top bar ---- */}
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-black/5">
+        <div className="max-content mx-auto px-5 py-3 flex items-center gap-4">
+          {/* logo */}
+          <button onClick={()=>onNav('home')} className="flex items-center gap-2 active:scale-[0.98]">
+            <div className="w-9 h-9 rounded-xl bg-teal-700 text-white flex items-center justify-center font-display font-bold">T</div>
+            <div className="leading-tight text-left">
+              <div className="font-display font-bold text-[16px] text-ink">TaskMate</div>
+              <div className="text-[10.5px] font-mono text-neutral-500 -mt-0.5">Mauritius</div>
+            </div>
+          </button>
+
+          {/* desktop search */}
+          <div className="hidden md:flex flex-1 max-w-xl ml-4">
+            <div className="w-full h-10 rounded-xl bg-cream ring-1 ring-black/5 flex items-center gap-2 px-3 text-[13.5px] text-neutral-500">
+              <Ico.search width="16" height="16" />
+              <span>Try "drop NIC at Civil Status, Port Louis"</span>
+            </div>
+          </div>
+
+          {/* lang toggle */}
+          <div className="hidden sm:flex items-center bg-cream rounded-lg ring-1 ring-black/5 p-0.5 text-[12px] font-display font-semibold">
+            {['EN','FR','KR'].map(l => (
+              <button key={l} onClick={()=>setLang(l)}
+                className={`px-2 py-1 rounded-md transition ${lang===l?'bg-white text-ink shadow-sm':'text-neutral-500'}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+
+          <Btn variant="primary" size="md" icon={<Ico.plus width="14" height="14"/>} onClick={onPost}>
+            Post a task
+          </Btn>
+        </div>
+      </header>
+
+      {/* ---- Body: sidebar + main ---- */}
+      <div className="max-content mx-auto px-5 py-6 grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 w-full flex-1">
+        {/* Sidebar */}
+        <aside className="hidden md:block">
+          <nav className="sticky top-[88px] flex flex-col gap-1">
+            {navItems.map(n => {
+              const Icon = n.icon, on = active === n.id;
+              return (
+                <button key={n.id} onClick={()=>onNav(n.id)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition
+                    ${on ? 'bg-teal-700 text-white shadow-[0_6px_14px_-8px_rgba(10,110,110,0.6)]'
+                         : 'text-ink hover:bg-white/70'}`}>
+                  <Icon width="18" height="18" sw={on?2.4:2} className={on?'text-white':'text-neutral-500'}/>
+                  <span className={`font-display ${on?'font-bold':'font-semibold'} text-[14px]`}>{n.label}</span>
+                </button>
+              );
+            })}
+
+            {/* Commitments card */}
+            <div className="mt-4 p-3 rounded-xl bg-white ring-1 ring-black/5">
+              <div className="flex items-center gap-1.5 text-[10.5px] font-mono text-neutral-500 uppercase tracking-wider">
+                <Ico.globe width="11" height="11" sw="2.2"/> What we stand for
+              </div>
+              <div className="mt-1.5 text-[12px] text-neutral-700 leading-snug">
+                Fair pay for every tasker · Equal opportunity hiring · Mauritian-built, Mauritian-run.
+              </div>
+            </div>
+          </nav>
+        </aside>
+
+        {/* Main */}
+        <main className="min-w-0">{children}</main>
+      </div>
+
+      {/* ---- Mobile bottom nav ---- */}
+      <nav className="md:hidden sticky bottom-0 bg-white/95 backdrop-blur border-t border-black/5 px-2 py-1.5 flex">
+        {[
+          { id:'home',     label:'Discover', icon:Ico.home },
+          { id:'tasks',    label:'My tasks', icon:Ico.list },
+          { id:'post',     label:'',         icon:Ico.plus, post:true },
+          { id:'messages', label:'Messages', icon:Ico.chat },
+          { id:'profile',  label:'Profile',  icon:Ico.user },
+        ].map(n => {
+          const Icon = n.icon, on = active === n.id;
+          if (n.post) return (
+            <div key="post" className="flex-1 flex justify-center">
+              <button onClick={onPost} className="-mt-5 w-12 h-12 rounded-full bg-coral text-white flex items-center justify-center shadow-[0_8px_18px_-6px_rgba(255,107,53,0.6)]">
+                <Icon width="22" height="22" sw="2.4"/>
+              </button>
+            </div>
+          );
+          return (
+            <button key={n.id} onClick={()=>onNav(n.id)} className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+              <Icon width="20" height="20" sw={on?2.4:2} className={on?'text-teal-700':'text-neutral-400'}/>
+              <span className={`font-display text-[10px] font-semibold ${on?'text-teal-700':'text-neutral-400'}`}>{n.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+    </div>
+  );
+}
+
+/* =====================================================================
+   Reusable: Trust banner (escrow + guarantee)
+   ===================================================================== */
+function TrustBanner({ onClick }) {
+  return (
+    <button onClick={onClick}
+      className="w-full rounded-2xl p-4 flex items-center gap-3 text-left transition hover:shadow-md"
+      style={{ background:'linear-gradient(100deg, #083E3E, #0A6E6E)' }}>
+      <div className="w-11 h-11 rounded-full bg-white/15 flex items-center justify-center text-white flex-shrink-0">
+        <Ico.shield width="20" height="20"/>
+      </div>
+      <div className="text-white flex-1 min-w-0">
+        <div className="font-display font-bold text-[14px] flex items-center gap-2">
+          TaskMate Guarantee
+
+        </div>
+        <div className="text-[12px] opacity-85 leading-snug">Escrow-held payment · Full refund if not satisfied · Dispute resolution within 24h</div>
+      </div>
+      <Ico.chev width="16" height="16" className="text-white/70"/>
+    </button>
+  );
+}
+
+/* =====================================================================
+   HOME / DISCOVER
+   ===================================================================== */
+function ScreenHome({ onPost, onPickCat, onOpenSafety, onOpenTasker, lang }) {
+  return (
+    <div className="space-y-6 anim-fade">
+      {/* Hero */}
+      <section className="relative overflow-hidden rounded-3xl bg-white ring-1 ring-black/5 p-6 md:p-8 grain">
+        <div className="absolute -top-10 -right-12 w-72 h-72 rounded-full" style={{
+          background:'radial-gradient(circle, rgba(255,107,53,0.18), transparent 70%)' }}/>
+        <div className="absolute -bottom-12 -left-12 w-72 h-72 rounded-full" style={{
+          background:'radial-gradient(circle, rgba(10,110,110,0.16), transparent 70%)' }}/>
+
+        <div className="relative max-w-2xl">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-coral-50 text-coral-600 text-[11.5px] font-display font-bold">
+              <Ico.clock width="11" height="11" sw="2.4"/> Reclaim your evening
+            </span>
+
+          </div>
+
+          <h1 className="font-display font-extrabold text-[32px] md:text-[40px] leading-[1.05] text-ink">
+            Outsource the small stuff.<br/>
+            <span className="text-teal-700">Get back to the work that matters.</span>
+          </h1>
+          <p className="mt-3 text-[15px] text-neutral-700 leading-relaxed max-w-xl">
+            Built for time-poor professionals in Mauritius. Verified taskers, transparent fees, escrow-protected payment — vetted before they reach your door.
+          </p>
+
+          <div className="mt-5 flex flex-wrap gap-2.5">
+            <Btn variant="primary" size="lg" icon={<Ico.plus width="14" height="14"/>} onClick={onPost}>
+              Post a task in 60 seconds
+            </Btn>
+            <Btn variant="ghost" size="lg" icon={<Ico.shield width="14" height="14"/>} onClick={onOpenSafety}>
+              How we keep you safe
+            </Btn>
+          </div>
+
+          {/* Three social-proof stats */}
+          <div className="mt-6 grid grid-cols-3 gap-3 max-w-md">
+            <div className="rounded-xl bg-cream ring-1 ring-black/5 px-3 py-2">
+              <div className="font-display font-extrabold text-[18px] text-ink">320+</div>
+              <div className="text-[10.5px] text-neutral-600 leading-tight">verified taskers across Mauritius</div>
+            </div>
+            <div className="rounded-xl bg-cream ring-1 ring-black/5 px-3 py-2">
+              <div className="font-display font-extrabold text-[18px] text-ink">~2h 30m</div>
+              <div className="text-[10.5px] text-neutral-600 leading-tight">average time saved per booking</div>
+            </div>
+            <div className="rounded-xl bg-cream ring-1 ring-black/5 px-3 py-2">
+              <div className="font-display font-extrabold text-[18px] text-ink">4.86 ★</div>
+              <div className="text-[10.5px] text-neutral-600 leading-tight">average tasker rating, last 30 days</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Trust banner */}
+      <TrustBanner onClick={onOpenSafety}/>
+
+      {/* Categories */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-display font-bold text-[18px] text-ink">What needs doing today?</h2>
+          <button onClick={() => onPickCat()} className="text-[12px] font-display font-semibold text-teal-700 hover:text-teal-800">See all</button>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {CATS.map(c => (
+            <button key={c.id} onClick={()=>onPickCat(c.id)}
+              className="bg-white rounded-2xl ring-1 ring-black/5 p-4 text-left hover:ring-teal-700/20 hover:-translate-y-0.5 transition group">
+              <CatIcon cat={c} size={44}/>
+              <div className="mt-3 font-display font-semibold text-[13.5px] text-ink leading-tight">{c.label}</div>
+              <div className="text-[11px] text-neutral-500 mt-0.5">from {fmtRs(220)}/h</div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Top-rated taskers strip */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-display font-bold text-[18px] text-ink">Top-rated near you</h2>
+          <span className="text-[12px] text-neutral-500 inline-flex items-center gap-1"><Ico.pin width="12" height="12"/> Curepipe area</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {TASKERS.slice(0,3).map(t => (
+            <button key={t.id} onClick={()=>onOpenTasker(t.id)}
+              className="bg-white rounded-2xl ring-1 ring-black/5 p-4 text-left hover:ring-teal-700/20 hover:-translate-y-0.5 transition">
+              <div className="flex items-center gap-3">
+                <Avatar name={t.name} size={44} ring="#0A6E6E"/>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-display font-bold text-[14px] text-ink truncate">{t.name}</span>
+                    <TierBadge tier={t.tier}/>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <Rating value={t.rating} count={t.reviews}/>
+                    <span className="text-neutral-300">·</span>
+                    <span className="text-[11.5px] text-neutral-500">{t.area}</span>
+                  </div>
+                </div>
+              </div>
+              <p className="mt-3 text-[12.5px] text-neutral-700 leading-snug">{t.blurb}</p>
+              <div className="mt-3 flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <VerifiedChip>{t.verifs}-step verified</VerifiedChip>
+                </div>
+                <span className="font-display font-bold text-[13px] text-teal-700">{fmtRs(t.hourly)}/h</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* How it works — 3-step strip */}
+      <section className="bg-white rounded-3xl ring-1 ring-black/5 p-5 md:p-6">
+        <h2 className="font-display font-bold text-[18px] text-ink mb-4">How TaskMate works</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[
+            { n:'1', k:'Post your task', d:'Pick a category, add a few details, choose Standard, Priority or Same-day. Takes about a minute.' },
+            { n:'2', k:'Match with a vetted tasker', d:'Verified locals nearby send offers. Compare ratings, prices, and ETAs — pick the one that fits.' },
+            { n:'3', k:'Pay securely, only when done', d:'Your payment is held in escrow. The tasker is paid only after you confirm the job is complete.' },
+          ].map(s => (
+            <div key={s.n} className="rounded-2xl bg-cream ring-1 ring-black/5 p-4">
+              <div className="w-8 h-8 rounded-full bg-teal-700 text-white font-display font-extrabold flex items-center justify-center mb-2">{s.n}</div>
+              <div className="font-display font-bold text-[14px] text-ink">{s.k}</div>
+              <p className="mt-1 text-[12.5px] text-neutral-600 leading-snug">{s.d}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Regulated & licensed strip */}
+      <section className="bg-white rounded-3xl ring-1 ring-black/5 p-5 md:p-6">
+        <div className="flex items-start gap-4 flex-wrap">
+          <div className="w-11 h-11 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center flex-shrink-0">
+            <Ico.shield width="20" height="20"/>
+          </div>
+          <div className="flex-1 min-w-[260px]">
+            <div className="font-display font-bold text-[15px] text-ink">Regulated, licensed, and built for Mauritius</div>
+            <p className="mt-1 text-[12.5px] text-neutral-700 leading-snug max-w-2xl">
+              TaskMate Ltd is a Mauritian-registered company operating under local consumer-protection law. Payment processing is handled by a Bank of Mauritius–licensed acquirer. Personal data is stored and processed in line with the Data Protection Act 2017, and we follow GDPR-equivalent controls for cross-border transactions.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 mt-1">
+            {[
+              { k:'Mauritius DPA 2017',           sub:'Data Protection' },
+              { k:'BRN: 12345678',                sub:'Business Registration' },
+              { k:'BoM-licensed acquirer',        sub:'Card processing' },
+              { k:'Consumer Protection Act 2003', sub:'Service standards' },
+            ].map(b => (
+              <div key={b.k} className="rounded-xl bg-cream ring-1 ring-black/5 px-3 py-2">
+                <div className="font-display font-bold text-[11.5px] text-ink leading-tight">{b.k}</div>
+                <div className="font-mono text-[9.5px] text-neutral-500 uppercase tracking-wider mt-0.5">{b.sub}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* =====================================================================
+   POST A TASK (multi-step)
+   ===================================================================== */
+function ScreenPostTask({ onClose, onSubmit }) {
+  const [step, setStep] = useState(1);
+  const [catId, setCatId] = useState(null);
+  const [title, setTitle] = useState('');
+  const [details, setDetails] = useState('');
+  const [area, setArea] = useState('Curepipe');
+  const [tierId, setTierId] = useState('std');
+  const [budget, setBudget] = useState(800);
+
+  const baseEta = useMemo(() => {
+    if (!catId) return 90;
+    const m = { cleaning:165, errands:90, grocery:75, laundry:60, docdrop:95, tech:55, handyman:120, moving:180 };
+    return m[catId] || 90;
+  }, [catId]);
+
+  const tier = TIERS.find(t => t.id === tierId);
+  const adjFee = Math.round(budget * tier.mult);
+  const platformFee = Math.round(adjFee * 0.18);   // 18% platform fee
+  const taskerPayout = adjFee - platformFee;
+
+  const cat = catId ? catById(catId) : null;
+
+  const next = () => setStep(s => Math.min(4, s+1));
+  const prev = () => setStep(s => Math.max(1, s-1));
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-stretch md:items-center justify-center p-0 md:p-6 anim-fade" onClick={onClose}>
+      <div className="bg-cream w-full md:max-w-2xl md:rounded-3xl overflow-hidden flex flex-col max-h-screen md:max-h-[88vh]"
+        onClick={e => e.stopPropagation()}>
+        {/* header */}
+        <div className="flex items-center justify-between px-5 py-4 bg-white border-b border-black/5">
+          <div className="flex items-center gap-2">
+            <button onClick={step>1?prev:onClose} className="w-9 h-9 rounded-lg ring-1 ring-black/5 hover:bg-cream flex items-center justify-center">
+              <Ico.back width="16" height="16"/>
+            </button>
+            <div>
+              <div className="font-display font-bold text-[16px] text-ink">Post a task</div>
+              <div className="text-[11px] font-mono text-neutral-500">Step {step} of 4 · ~60 seconds</div>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-9 h-9 rounded-lg ring-1 ring-black/5 hover:bg-cream flex items-center justify-center"><Ico.x width="16" height="16"/></button>
+        </div>
+
+        {/* progress */}
+        <div className="h-1 bg-cream">
+          <div className="h-full bg-coral transition-all" style={{ width:`${(step/4)*100}%` }}/>
+        </div>
+
+        {/* body */}
+        <div className="flex-1 overflow-auto p-5 md:p-6">
+          {step === 1 && (
+            <div className="anim-in">
+              <h3 className="font-display font-bold text-[18px] text-ink">What kind of task?</h3>
+              <p className="text-[13px] text-neutral-600 mt-1">We'll surface the right specialists for you.</p>
+              <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {CATS.map(c => (
+                  <button key={c.id} onClick={()=>{ setCatId(c.id); next(); }}
+                    className={`p-3 rounded-xl ring-1 text-left transition
+                      ${catId===c.id?'bg-white ring-teal-700/40 shadow-sm':'bg-white ring-black/5 hover:ring-teal-700/20'}`}>
+                    <CatIcon cat={c} size={36} rounded={10}/>
+                    <div className="mt-2 font-display font-semibold text-[12.5px] text-ink leading-tight">{c.label}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="anim-in space-y-4">
+              <div>
+                <h3 className="font-display font-bold text-[18px] text-ink">Tell us a bit more</h3>
+                <p className="text-[13px] text-neutral-600 mt-1">Short, specific descriptions get faster, better matches.</p>
+              </div>
+              {cat && (
+                <div className="flex items-center gap-3 p-3 bg-white rounded-xl ring-1 ring-black/5">
+                  <CatIcon cat={cat} size={40} rounded={10}/>
+                  <div>
+                    <div className="font-display font-semibold text-[13.5px] text-ink">{cat.label}</div>
+                    <button className="text-[11.5px] text-teal-700 font-display font-semibold" onClick={()=>setStep(1)}>Change</button>
+                  </div>
+                </div>
+              )}
+              <label className="block">
+                <span className="text-[12px] font-display font-semibold text-neutral-700">Title</span>
+                <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Deep clean of 2-bed apartment"
+                  className="mt-1.5 w-full bg-white rounded-xl ring-1 ring-black/10 px-4 py-3 font-body text-[14px] focus:ring-teal-700/40 focus:outline-none"/>
+              </label>
+              <label className="block">
+                <span className="text-[12px] font-display font-semibold text-neutral-700">Details (optional)</span>
+                <textarea value={details} onChange={e=>setDetails(e.target.value)} rows={4}
+                  placeholder="Anything the tasker should know — access, supplies, timing constraints…"
+                  className="mt-1.5 w-full bg-white rounded-xl ring-1 ring-black/10 px-4 py-3 font-body text-[14px] focus:ring-teal-700/40 focus:outline-none"/>
+              </label>
+              <label className="block">
+                <span className="text-[12px] font-display font-semibold text-neutral-700">Where in Mauritius?</span>
+                <select value={area} onChange={e=>setArea(e.target.value)}
+                  className="mt-1.5 w-full bg-white rounded-xl ring-1 ring-black/10 px-4 py-3 font-body text-[14px] focus:ring-teal-700/40 focus:outline-none">
+                  {['Curepipe','Port Louis','Quatre Bornes','Ebene','Rose Hill','Grand Baie','Beau Bassin','Vacoas','Flacq','Mahebourg'].map(a => <option key={a}>{a}</option>)}
+                </select>
+              </label>
+              <div className="pt-2"><Btn variant="primary" size="lg" onClick={next} disabled={!title.trim()}>Continue</Btn></div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="anim-in space-y-5">
+              <div>
+                <h3 className="font-display font-bold text-[18px] text-ink">When do you need it?</h3>
+                <p className="text-[13px] text-neutral-600 mt-1">Faster service costs more, but takes work off your plate today.</p>
+              </div>
+
+              {/* Service tier */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] font-display font-semibold text-neutral-700">Service tier</span>
+
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {TIERS.map(t => {
+                    const sel = tierId === t.id;
+                    return (
+                      <button key={t.id} onClick={()=>setTierId(t.id)}
+                        className={`p-3 rounded-xl ring-1 text-left transition
+                          ${sel ? 'bg-white shadow-sm' : 'bg-white ring-black/5 hover:ring-teal-700/20'}`}
+                        style={ sel ? { boxShadow:`0 0 0 2px ${t.ring}` } : {}}>
+                        <div className="font-display font-bold text-[13px] text-ink">{t.label}</div>
+                        <div className="text-[11px] text-neutral-500 mt-0.5">{t.sub}</div>
+                        <div className="font-mono text-[11px] mt-1.5 text-neutral-600">×{t.mult.toFixed(2)}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Budget */}
+              <div className="space-y-2">
+                <span className="text-[12px] font-display font-semibold text-neutral-700">Your budget</span>
+                <input type="range" min={300} max={3000} step={50} value={budget} onChange={e=>setBudget(+e.target.value)} className="w-full accent-coral"/>
+                <div className="flex items-center justify-between font-mono text-[12px] text-neutral-500">
+                  <span>{fmtRs(300)}</span>
+                  <span className="font-display font-bold text-[18px] text-ink">{fmtRs(budget)}</span>
+                  <span>{fmtRs(3000)}</span>
+                </div>
+              </div>
+
+              {/* Time-saved estimate */}
+              <div className="rounded-2xl p-4" style={{ background:'linear-gradient(100deg, #FFF1EC, #FFE6D6)' }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <Ico.clock width="14" height="14" className="text-coral-600"/>
+                  <span className="font-display font-bold text-[12.5px] text-coral-600">You save approximately</span>
+
+                </div>
+                <div className="font-display font-extrabold text-[28px] text-ink leading-none">{fmtTime(baseEta)}</div>
+                <div className="text-[11.5px] text-neutral-600 mt-1.5">Time you'd otherwise spend on this — based on tasker median completion for {cat?cat.label.toLowerCase():'this category'}.</div>
+              </div>
+
+              {/* Fee breakdown */}
+              <div className="rounded-2xl bg-white ring-1 ring-black/5 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-display font-bold text-[13px] text-ink">Fee breakdown</span>
+
+                </div>
+                <div className="text-[13px] divide-y divide-black/5">
+                  <Row k="Job amount"           v={fmtRs(budget)}/>
+                  <Row k={`Service tier × ${tier.mult.toFixed(2)}`} v={fmtRs(adjFee - budget)} muted={tier.mult===1}/>
+                  <Row k="Platform fee (18%)"   v={`− ${fmtRs(platformFee)}`} muted/>
+                  <Row k="Tasker payout"        v={fmtRs(taskerPayout)} muted/>
+                  <div className="flex items-center justify-between pt-2.5 mt-1">
+                    <span className="font-display font-bold text-[14px] text-ink">You pay</span>
+                    <span className="font-display font-extrabold text-[18px] text-coral-600">{fmtRs(adjFee)}</span>
+                  </div>
+                </div>
+                <div className="mt-3 text-[11px] text-neutral-500 leading-snug">
+                  Held in escrow until you confirm the task is complete. No surprise charges.
+                </div>
+              </div>
+
+              <Btn variant="primary" size="lg" onClick={next}>Review & post</Btn>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="anim-in space-y-4">
+              <h3 className="font-display font-bold text-[18px] text-ink">Almost done — review</h3>
+              {cat && (
+                <div className="bg-white rounded-2xl ring-1 ring-black/5 p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <CatIcon cat={cat} size={44} rounded={12}/>
+                    <div className="min-w-0">
+                      <div className="font-display font-bold text-[14px] text-ink truncate">{title || cat.label}</div>
+                      <div className="text-[12px] text-neutral-500">{area} · {tier.label} · saves ~{fmtTime(baseEta)}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-[13px] pt-2 border-t border-black/5">
+                    <span className="font-display font-semibold text-neutral-700">Total</span>
+                    <span className="font-display font-extrabold text-[18px] text-coral-600">{fmtRs(adjFee)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Trust reassurance before submit */}
+              <div className="rounded-2xl p-4 bg-white ring-1 ring-black/5">
+                <div className="flex items-center gap-2 mb-1">
+                  <Ico.shield width="14" height="14" className="text-teal-700"/>
+                  <span className="font-display font-bold text-[12.5px] text-teal-700">You're right to ask: here's what we do</span>
+
+                </div>
+                <ul className="text-[12.5px] text-neutral-700 leading-relaxed mt-1 space-y-1">
+                  <li>· Every tasker passes a 6-step verification before bidding.</li>
+                  <li>· Your payment is escrow-held until you confirm completion.</li>
+                  <li>· Your address & phone are masked from the tasker until match.</li>
+                  <li>· One-tap dispute resolution — answered within 24h.</li>
+                </ul>
+              </div>
+
+              <Btn variant="primary" size="lg" onClick={()=>onSubmit({ catId, title, details, area, tierId, fee: adjFee, timeSavedMin: baseEta })}>
+                Post task — Rs {adjFee.toLocaleString('en-IN')}
+              </Btn>
+              <div className="text-[11.5px] text-neutral-500 text-center">By posting you agree to the TaskMate Service Terms & our Data &amp; Safety policy.</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+function Row({ k, v, muted }) {
+  return (
+    <div className={`flex items-center justify-between py-1.5 ${muted?'text-neutral-500':'text-ink'}`}>
+      <span className="font-body">{k}</span>
+      <span className="font-display font-semibold">{v}</span>
+    </div>
+  );
+}
+
+/* =====================================================================
+   TASKER PROFILE
+   ===================================================================== */
+function ScreenTaskerProfile({ taskerId, onClose, onMessage, onBook }) {
+  const t = TASKERS.find(x => x.id === taskerId) || TASKERS[0];
+  // 6-dimension verification panel
+  const verifs = [
+    { k:'Government ID (NIC)',         done:true,  desc:'Verified against Civil Status records.' },
+    { k:'Police clearance certificate', done:true, desc:'Issued within last 12 months.' },
+    { k:'Address verification',         done:true, desc:'Utility bill or rental agreement.' },
+    { k:'Phone & email verified',       done:true, desc:'Two-factor confirmed.' },
+    { k:'Professional references (3)',  done:true, desc:'Independently contacted by our team.' },
+    { k:'Liability insurance',          done: t.verifs >= 6, desc: t.verifs >= 6 ? 'Up to Rs 250,000 per booking.' : 'Self-employed cover only.' },
+  ];
+
+  return (
+    <div className="space-y-5 anim-fade">
+      <button onClick={onClose} className="inline-flex items-center gap-1.5 text-[13px] font-display font-semibold text-teal-700 hover:text-teal-800">
+        <Ico.back width="14" height="14"/> Back to discover
+      </button>
+
+      <div className="bg-white rounded-3xl ring-1 ring-black/5 p-5 md:p-6 grid grid-cols-1 md:grid-cols-[auto_1fr_auto] items-start gap-5">
+        <Avatar name={t.name} size={88} ring="#0A6E6E"/>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="font-display font-extrabold text-[22px] text-ink">{t.name}</h2>
+            <TierBadge tier={t.tier}/>
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <Rating value={t.rating} count={t.reviews} size={14}/>
+            <span className="text-neutral-300">·</span>
+            <span className="text-[12.5px] text-neutral-600 inline-flex items-center gap-1"><Ico.pin width="12" height="12"/> {t.area}, Mauritius</span>
+            <span className="text-neutral-300">·</span>
+            <span className="text-[12.5px] text-neutral-600 inline-flex items-center gap-1"><Ico.clock width="12" height="12"/> ~{t.eta}m response</span>
+          </div>
+          <p className="mt-3 text-[13.5px] text-neutral-700 leading-relaxed max-w-xl">{t.blurb}</p>
+        </div>
+        <div className="flex md:flex-col gap-2 md:items-stretch">
+          <div className="text-right md:text-left">
+            <div className="font-display font-extrabold text-[22px] text-teal-700">{fmtRs(t.hourly)}</div>
+            <div className="text-[11.5px] text-neutral-500 -mt-1">per hour · escrow-held</div>
+          </div>
+          <Btn variant="primary" size="md" onClick={onBook}>Book {t.name.split(' ')[0]}</Btn>
+          <Btn variant="ghost"   size="md" icon={<Ico.msg width="14" height="14"/>} onClick={onMessage}>Message</Btn>
+        </div>
+      </div>
+
+      {/* VERIFICATION PANEL */}
+      <section className="bg-white rounded-3xl ring-1 ring-black/5 p-5 md:p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center"><Ico.shield width="18" height="18"/></div>
+          <div>
+            <div className="font-display font-bold text-[15px] text-ink">Verification panel</div>
+            <div className="text-[11.5px] text-neutral-500">6-step institutional trust check</div>
+          </div>
+          <div className="ml-auto flex gap-1.5">
+
+
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {verifs.map((v,i) => (
+            <div key={i} className={`p-3 rounded-2xl ring-1 ${v.done?'bg-teal-50/40 ring-teal-700/15':'bg-cream ring-black/5'}`}>
+              <div className="flex items-center gap-2.5">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center ${v.done?'bg-teal-700 text-white':'bg-neutral-200 text-neutral-500'}`}>
+                  {v.done ? <Ico.check width="14" height="14" sw="3"/> : <Ico.x width="12" height="12"/>}
+                </div>
+                <span className="font-display font-bold text-[12.5px] text-ink">{v.k}</span>
+              </div>
+              <p className="mt-1.5 text-[11.5px] text-neutral-600 leading-snug pl-[2.4rem]">{v.desc}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 text-[11.5px] text-neutral-500 leading-snug">
+          Every tasker on TaskMate clears all six checks before they can take their first job. We don't hide which checks passed and which didn't — if something's missing, you'll see it here.
+        </div>
+      </section>
+
+      {/* Reviews + recent jobs — placeholder strip */}
+      <section className="bg-white rounded-3xl ring-1 ring-black/5 p-5 md:p-6">
+        <h3 className="font-display font-bold text-[15px] text-ink mb-3">Recent reviews</h3>
+        {[
+          { who:'A. Soobhug',     when:'2 weeks ago', text:'Very thorough — apartment looked better than after the cleaners we used before. Will book again.' },
+          { who:'M. Beebeejaun',  when:'1 month ago', text:'On time, polite, knew exactly what needed doing. Worth the priority fee.' },
+        ].map((r,i)=>(
+          <div key={i} className="py-3 border-t border-black/5 first:border-0 first:pt-0">
+            <div className="flex items-center gap-2">
+              <Avatar name={r.who} size={28}/>
+              <span className="font-display font-semibold text-[12.5px] text-ink">{r.who}</span>
+              <span className="text-[11px] text-neutral-400">· {r.when}</span>
+              <Rating value={5} size={11}/>
+            </div>
+            <p className="mt-1.5 text-[12.5px] text-neutral-700 leading-snug">{r.text}</p>
+          </div>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+/* =====================================================================
+   MY TASKS — booking management + dispute path
+   ===================================================================== */
+function ScreenMyTasks({ bookings, onOpenBooking }) {
+  const [tab, setTab] = useState('active');
+  const filtered = bookings; // stub: all are active
+  return (
+    <div className="space-y-4 anim-fade">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="font-display font-extrabold text-[22px] text-ink">My tasks</h1>
+        <div className="flex bg-white rounded-xl ring-1 ring-black/5 p-0.5">
+          {[['active','Active'],['past','Past'],['draft','Drafts']].map(([id,l])=>(
+            <button key={id} onClick={()=>setTab(id)}
+              className={`px-3 py-1.5 rounded-lg text-[12.5px] font-display font-semibold ${tab===id?'bg-teal-700 text-white':'text-neutral-600'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {filtered.length === 0 && (
+        <div className="bg-white rounded-3xl ring-1 ring-black/5 p-8 text-center">
+          <div className="w-12 h-12 rounded-full bg-cream mx-auto flex items-center justify-center"><Ico.list width="20" height="20" className="text-neutral-400"/></div>
+          <div className="mt-2 font-display font-bold text-[14px] text-ink">Nothing here yet.</div>
+          <div className="text-[12px] text-neutral-500">Posted tasks will appear here.</div>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {filtered.map(b => {
+          const c = catById(b.cat);
+          return (
+            <button key={b.id} onClick={()=>onOpenBooking(b.id)}
+              className="w-full bg-white rounded-2xl ring-1 ring-black/5 p-4 text-left hover:ring-teal-700/20 transition flex flex-col sm:flex-row sm:items-center gap-3">
+              <CatIcon cat={c} size={48} rounded={14}/>
+              <div className="flex-1 min-w-0">
+                <div className="font-display font-bold text-[14px] text-ink truncate">{b.title}</div>
+                <div className="text-[12px] text-neutral-500 truncate mt-0.5">{b.tasker} · {b.area} · {b.when}</div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-full bg-coral-50 text-coral-600 text-[11px] font-display font-semibold inline-flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-coral anim-pulse"/> {b.status}
+                  </span>
+                  <TimeSavedChip minutes={b.timeSavedMin}/>
+                </div>
+              </div>
+              <div className="text-right sm:min-w-[100px]">
+                <div className="font-display font-extrabold text-[16px] text-teal-700">{fmtRs(b.fee)}</div>
+                <div className="text-[10.5px] text-neutral-500 -mt-0.5">held in escrow</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Dispute path footer */}
+      <div className="bg-white rounded-2xl ring-1 ring-black/5 p-4 flex items-center gap-3 mt-2">
+        <div className="w-10 h-10 rounded-xl bg-cream text-ink flex items-center justify-center"><Ico.alert width="18" height="18"/></div>
+        <div className="flex-1 min-w-0">
+          <div className="font-display font-bold text-[13px] text-ink flex items-center gap-2">
+            Something not right with a task?
+
+          </div>
+          <div className="text-[11.5px] text-neutral-500 mt-0.5">Open a dispute and our team responds within 24h. Escrow holds your payment until resolved.</div>
+        </div>
+        <Btn variant="ghost" size="sm">Open a dispute</Btn>
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================================
+   BOOKING DETAIL
+   ===================================================================== */
+function ScreenBookingDetail({ bookingId, bookings, onClose }) {
+  const b = bookings.find(x => x.id === bookingId);
+  if (!b) return null;
+  const c = catById(b.cat);
+  const tier = TIERS.find(x => x.id === b.tierId) || TIERS[0];
+  const platformFee = Math.round(b.fee * 0.18);
+  const taskerPayout = b.fee - platformFee;
+
+  return (
+    <div className="space-y-5 anim-fade">
+      <button onClick={onClose} className="inline-flex items-center gap-1.5 text-[13px] font-display font-semibold text-teal-700">
+        <Ico.back width="14" height="14"/> Back to my tasks
+      </button>
+
+      {/* Status header */}
+      <div className="bg-white rounded-3xl ring-1 ring-black/5 p-5 md:p-6">
+        <div className="flex items-start gap-4">
+          <CatIcon cat={c} size={56} rounded={16}/>
+          <div className="flex-1 min-w-0">
+            <div className="font-display font-extrabold text-[18px] text-ink">{b.title}</div>
+            <div className="text-[12.5px] text-neutral-500">{b.area} · {b.when}</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span className="px-2.5 py-1 rounded-full bg-coral-50 text-coral-600 text-[11.5px] font-display font-semibold inline-flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-coral anim-pulse"/> {b.status}
+              </span>
+              <TimeSavedChip minutes={b.timeSavedMin}/>
+              <span className="px-2.5 py-1 rounded-full bg-teal-50 text-teal-700 text-[11.5px] font-display font-semibold inline-flex items-center gap-1">
+                <Ico.shield width="11" height="11"/> Escrow active
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 flex items-center gap-3 p-3 rounded-2xl bg-cream ring-1 ring-black/5">
+          <Avatar name={b.tasker} size={40} ring="#0A6E6E"/>
+          <div className="flex-1 min-w-0">
+            <div className="font-display font-bold text-[13.5px] text-ink truncate">{b.tasker}</div>
+            <div className="text-[11.5px] text-neutral-500">Your tasker · {tier.label} tier</div>
+          </div>
+          <Btn variant="ghost" size="sm" icon={<Ico.msg width="13" height="13"/>}>Message</Btn>
+        </div>
+      </div>
+
+      {/* Fee breakdown */}
+      <div className="bg-white rounded-3xl ring-1 ring-black/5 p-5 md:p-6">
+        <div className="flex items-center gap-2 mb-3">
+          <h3 className="font-display font-bold text-[15px] text-ink">Fee breakdown</h3>
+
+        </div>
+        <div className="text-[13.5px] divide-y divide-black/5">
+          <Row k={`Job amount (${tier.label})`} v={fmtRs(b.fee)}/>
+          <Row k="Platform fee (18%)" v={`− ${fmtRs(platformFee)}`} muted/>
+          <Row k="Tasker payout"      v={fmtRs(taskerPayout)} muted/>
+          <div className="flex items-center justify-between pt-3 mt-1">
+            <span className="font-display font-bold text-[14px] text-ink">Total held in escrow</span>
+            <span className="font-display font-extrabold text-[18px] text-coral-600">{fmtRs(b.fee)}</span>
+          </div>
+        </div>
+        <div className="mt-3 text-[11.5px] text-neutral-500 leading-snug">
+          Released to tasker only after you confirm completion. You can request a partial or full refund anytime via the dispute panel below.
+        </div>
+      </div>
+
+      {/* Dispute panel */}
+      <div className="bg-white rounded-3xl ring-1 ring-black/5 p-5 md:p-6">
+        <div className="flex items-center gap-2 mb-2">
+          <Ico.alert width="16" height="16" className="text-coral-600"/>
+          <h3 className="font-display font-bold text-[15px] text-ink">Issue with this task?</h3>
+
+        </div>
+        <p className="text-[12.5px] text-neutral-600 leading-snug max-w-xl">
+          Tell us briefly what went wrong. We respond within 24 hours and your payment stays in escrow until the dispute is resolved.
+        </p>
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {['Tasker did not arrive','Quality below expectations','Damage or breakage','Pricing disagreement'].map(opt => (
+            <button key={opt} className="text-left p-3 rounded-xl ring-1 ring-black/5 hover:ring-teal-700/20 bg-cream">
+              <span className="font-display font-semibold text-[12.5px] text-ink">{opt}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================================
+   TRUST & SAFETY
+   ===================================================================== */
+function ScreenSafety({ onClose }) {
+  const dims = [
+    { id:'fin',  k:'Your money',     subtitle:'Payment & refunds',     icon:Ico.lock,    desc:'Escrow holds your payment until you confirm completion. No card details ever touch the tasker.', controls:['Card data tokenised via PCI-DSS gateway','Payouts to taskers only post-confirmation','Refunds processed within 3–5 business days'] },
+    { id:'perf', k:'Service quality',subtitle:'Ratings & re-dos',      icon:Ico.bolt,    desc:'Every tasker is rated, reviewed, and tier-graded after each job. Underperformers are suspended.', controls:['Two-way ratings system','Quality score reviewed weekly','Re-do guarantee on Gold-tier taskers'] },
+    { id:'priv', k:'Your privacy',   subtitle:'Data & identity',       icon:Ico.shield,  desc:'Your address and phone number are masked from the tasker until match — and revoked when the job ends.', controls:['Address masked until booking confirmed','Number-masking via virtual relay','Data deleted 30 days after task close'] },
+    { id:'time', k:'On-time service',subtitle:'Reliability guarantees',icon:Ico.clock,   desc:'Same-day and Priority tiers come with a service-level commitment. Late arrivals trigger automatic credit.', controls:['On-time guarantee on Priority tier','Auto-credit Rs 100 if tasker > 30m late','Live ETA tracking once en-route'] },
+  ];
+
+  return (
+    <div className="space-y-5 anim-fade">
+      <div className="flex items-center gap-2">
+        <button onClick={onClose} className="inline-flex items-center gap-1.5 text-[13px] font-display font-semibold text-teal-700">
+          <Ico.back width="14" height="14"/> Back
+        </button>
+      </div>
+
+      <header className="bg-white rounded-3xl ring-1 ring-black/5 p-6 md:p-8 grain relative overflow-hidden">
+        <div className="absolute -top-12 -right-12 w-72 h-72 rounded-full" style={{ background:'radial-gradient(circle, rgba(10,110,110,0.15), transparent 70%)' }}/>
+        <div className="relative max-w-2xl">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-50 text-teal-700 text-[11.5px] font-display font-bold">
+              <Ico.shield width="11" height="11"/> Built around your safety
+            </span>
+
+          </div>
+          <h1 className="font-display font-extrabold text-[28px] md:text-[34px] leading-tight text-ink">Trust &amp; safety</h1>
+          <p className="mt-2 text-[14px] text-neutral-700 leading-relaxed">
+            Letting someone help with your errands is a leap of trust. Here's exactly how we earn it — from your money to your privacy to the moment a tasker rings the bell.
+          </p>
+        </div>
+      </header>
+
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {dims.map(d => {
+          const I = d.icon;
+          return (
+            <div key={d.id} className="bg-white rounded-3xl ring-1 ring-black/5 p-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center"><I width="18" height="18"/></div>
+                <div>
+                  <div className="font-display font-bold text-[15px] text-ink">{d.k}</div>
+                  <div className="text-[10.5px] font-mono text-neutral-500 uppercase">{d.subtitle}</div>
+                </div>
+              </div>
+              <p className="mt-2.5 text-[12.5px] text-neutral-700 leading-snug">{d.desc}</p>
+              <ul className="mt-3 space-y-1.5">
+                {d.controls.map((c,i)=>(
+                  <li key={i} className="flex items-start gap-2 text-[12.5px] text-neutral-700">
+                    <span className="mt-1 w-3.5 h-3.5 rounded-full bg-teal-50 text-teal-700 flex items-center justify-center flex-shrink-0"><Ico.check width="9" height="9" sw="3.2"/></span>
+                    <span>{c}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="bg-white rounded-3xl ring-1 ring-black/5 p-5 md:p-6">
+        <h3 className="font-display font-bold text-[15px] text-ink mb-2">How we handle your data</h3>
+        <p className="text-[12.5px] text-neutral-700 leading-relaxed">
+          We collect the minimum needed to match you with a verified tasker. No data is sold, ever. We comply with the Mauritius Data Protection Act 2017 and apply GDPR-equivalent controls on transactional data. You can request a full export or deletion of your account from your profile.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {['Mauritius DPA 2017','GDPR-equivalent controls','PCI-DSS card processing','SOC 2 in progress'].map(b => (
+            <span key={b} className="px-2.5 py-1 rounded-full bg-cream ring-1 ring-black/5 text-[11.5px] font-display font-semibold text-ink">{b}</span>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* =====================================================================
+   FOR TASKERS — recruitment / how the platform works for taskers
+   Includes ratings methodology, reliability metrics, and regulation.
+   ===================================================================== */
+function ScreenForTaskers({ onClose }) {
+  // Ratings methodology — 4 components, weighted
+  const ratingComponents = [
+    { k:'Customer rating', w:60, d:'After every job, the customer leaves a 1-5 star rating. We average your last 50 jobs — never a single bad day weighing forever.' },
+    { k:'Completion rate', w:20, d:'Percentage of jobs you accept that you actually complete. Cancelling within 1 hour of start time counts against this.' },
+    { k:'On-time arrival', w:10, d:'Did you arrive within the agreed window? Tracked via GPS check-in. A 10-minute grace applies to all tiers.' },
+    { k:'Response time',   w:10, d:'How quickly you respond to new task offers. Faster responses earn priority placement in search.' },
+  ];
+
+  // Reliability tier mapping
+  const tierMap = [
+    { tier:'Bronze', min:'New tasker',         payout:'Standard',          extras:['Standard placement','Standard payout terms'] },
+    { tier:'Silver', min:'Score ≥ 4.50',       payout:'Standard',          extras:['Priority placement','Weekly payout option'] },
+    { tier:'Gold',   min:'Score ≥ 4.80, 100+ jobs', payout:'+5% per job', extras:['Featured placement','Same-day payout','Re-do guarantee paid by TaskMate'] },
+  ];
+
+  return (
+    <div className="space-y-5 anim-fade">
+      <div className="flex items-center gap-2">
+        <button onClick={onClose} className="inline-flex items-center gap-1.5 text-[13px] font-display font-semibold text-teal-700">
+          <Ico.back width="14" height="14"/> Back
+        </button>
+      </div>
+
+      {/* Hero */}
+      <header className="bg-white rounded-3xl ring-1 ring-black/5 p-6 md:p-8 grain relative overflow-hidden">
+        <div className="absolute -top-10 -right-12 w-72 h-72 rounded-full" style={{ background:'radial-gradient(circle, rgba(255,107,53,0.16), transparent 70%)' }}/>
+        <div className="relative max-w-2xl">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-coral-50 text-coral-600 text-[11.5px] font-display font-bold mb-3">
+            <Ico.hand width="11" height="11"/> Earn on your schedule
+          </span>
+          <h1 className="font-display font-extrabold text-[28px] md:text-[34px] leading-tight text-ink">Become a TaskMate tasker</h1>
+          <p className="mt-2 text-[14px] text-neutral-700 leading-relaxed">
+            Set your own hours, choose the work you want, and get paid into your Mauritian bank account every week. We’ll back you with a transparent rating system, dispute support, and an insurance safety net.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-2.5">
+            <Btn variant="primary" size="lg" icon={<Ico.plus width="14" height="14"/>}>Apply to become a tasker</Btn>
+            <Btn variant="ghost" size="lg" icon={<Ico.info width="14" height="14"/>}>See current openings</Btn>
+          </div>
+
+          <div className="mt-6 grid grid-cols-3 gap-3 max-w-md">
+            <div className="rounded-xl bg-cream ring-1 ring-black/5 px-3 py-2">
+              <div className="font-display font-extrabold text-[18px] text-ink">Rs 220+</div>
+              <div className="text-[10.5px] text-neutral-600 leading-tight">average hourly earnings</div>
+            </div>
+            <div className="rounded-xl bg-cream ring-1 ring-black/5 px-3 py-2">
+              <div className="font-display font-extrabold text-[18px] text-ink">82%</div>
+              <div className="text-[10.5px] text-neutral-600 leading-tight">repeat-customer rate</div>
+            </div>
+            <div className="rounded-xl bg-cream ring-1 ring-black/5 px-3 py-2">
+              <div className="font-display font-extrabold text-[18px] text-ink">7 days</div>
+              <div className="text-[10.5px] text-neutral-600 leading-tight">first payout to your bank</div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* How ratings work */}
+      <section className="bg-white rounded-3xl ring-1 ring-black/5 p-5 md:p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center"><Ico.star width="18" height="18"/></div>
+          <div>
+            <div className="font-display font-bold text-[16px] text-ink">How your rating is calculated</div>
+            <div className="text-[12px] text-neutral-500">Updated nightly. Last 50 jobs only.</div>
+          </div>
+        </div>
+
+        <div className="space-y-2.5">
+          {ratingComponents.map(c => (
+            <div key={c.k} className="rounded-2xl bg-cream ring-1 ring-black/5 p-3.5">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-display font-bold text-[13px] text-ink">{c.k}</span>
+                <span className="font-display font-extrabold text-[15px] text-teal-700">{c.w}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-white overflow-hidden mb-2">
+                <div className="h-full bg-teal-700 transition-all" style={{ width: `${c.w}%` }}/>
+              </div>
+              <p className="text-[12px] text-neutral-700 leading-snug">{c.d}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 p-3.5 rounded-2xl bg-coral-50/60 ring-1 ring-coral-500/20">
+          <div className="flex items-start gap-2.5">
+            <Ico.info width="16" height="16" className="text-coral-600 mt-0.5 flex-shrink-0"/>
+            <div className="text-[12px] text-neutral-700 leading-snug">
+              <strong className="font-display text-coral-600">A note on fairness.</strong> One bad rating doesn’t define you. We weight your <em>last 50 jobs</em>, so as you build a track record, occasional issues fade out. We also screen ratings for retaliatory or off-topic content before they affect your score.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Tier system */}
+      <section className="bg-white rounded-3xl ring-1 ring-black/5 p-5 md:p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center"><Ico.badge width="18" height="18"/></div>
+          <div>
+            <div className="font-display font-bold text-[16px] text-ink">Reliability tiers</div>
+            <div className="text-[12px] text-neutral-500">The better you perform, the more you earn.</div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {tierMap.map(t => (
+            <div key={t.tier} className="rounded-2xl bg-cream ring-1 ring-black/5 p-4">
+              <div className="mb-2"><TierBadge tier={t.tier}/></div>
+              <div className="font-display font-bold text-[13px] text-ink">{t.min}</div>
+              <div className="text-[11.5px] text-neutral-600 mt-0.5">{t.payout} payout</div>
+              <ul className="mt-3 space-y-1.5">
+                {t.extras.map((e,i)=>(
+                  <li key={i} className="flex items-start gap-2 text-[12px] text-neutral-700">
+                    <span className="mt-1 w-3.5 h-3.5 rounded-full bg-teal-50 text-teal-700 flex items-center justify-center flex-shrink-0">
+                      <Ico.check width="9" height="9" sw="3.2"/>
+                    </span>
+                    <span>{e}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Verification */}
+      <section className="bg-white rounded-3xl ring-1 ring-black/5 p-5 md:p-6">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center"><Ico.shield width="18" height="18"/></div>
+          <div>
+            <div className="font-display font-bold text-[16px] text-ink">What we ask for during onboarding</div>
+            <div className="text-[12px] text-neutral-500">A 6-step verification before your first job</div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {[
+            'Government-issued NIC',
+            'Police clearance certificate (issued within 12 months)',
+            'Address verification (utility bill or lease)',
+            'Phone &amp; email confirmation (2-factor)',
+            '3 professional or character references',
+            'Optional: liability insurance proof (qualifies you for Gold tier)',
+          ].map((k,i)=>(
+            <div key={i} className="flex items-start gap-2.5 p-3 rounded-xl bg-cream ring-1 ring-black/5">
+              <span className="mt-0.5 w-6 h-6 rounded-full bg-teal-700 text-white flex items-center justify-center font-display font-bold text-[11px] flex-shrink-0">{i+1}</span>
+              <span className="font-display font-semibold text-[12.5px] text-ink leading-snug" dangerouslySetInnerHTML={{__html: k}}/>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Regulation & worker rights */}
+      <section className="bg-white rounded-3xl ring-1 ring-black/5 p-5 md:p-6">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center"><Ico.globe width="18" height="18"/></div>
+          <div>
+            <div className="font-display font-bold text-[16px] text-ink">Your rights as a tasker</div>
+            <div className="text-[12px] text-neutral-500">Mauritian law &amp; TaskMate’s commitments</div>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {[
+            { k:'Fair pay floor',      d:'Every job posted on TaskMate clears the Workers’ Rights Act 2019 minimum hourly rate after our service fee.' },
+            { k:'Insurance cover',     d:'Public liability cover up to Rs 250,000 per booking is included on Gold-tier jobs at no cost to you.' },
+            { k:'No retaliation rule', d:'You can decline a job, raise a dispute, or leave a low rating without affecting your account standing.' },
+            { k:'Right to disconnect', d:'You decide when to be available. We never penalise you for going offline outside your declared hours.' },
+            { k:'Data &amp; privacy',  d:'Your ID documents are encrypted at rest. We never share your personal data with customers beyond first name and approximate area.' },
+            { k:'Independent contractor', d:'You work for yourself, set your own prices within tier ranges, and are responsible for your own tax filings (we issue an annual statement).' },
+          ].map((r,i)=>(
+            <div key={i} className="flex items-start gap-3 py-2.5 border-t border-black/5 first:border-0 first:pt-0">
+              <span className="mt-1 w-5 h-5 rounded-full bg-teal-50 text-teal-700 flex items-center justify-center flex-shrink-0"><Ico.check width="11" height="11" sw="3"/></span>
+              <div>
+                <div className="font-display font-bold text-[13px] text-ink" dangerouslySetInnerHTML={{__html: r.k}}/>
+                <div className="text-[12px] text-neutral-700 leading-snug mt-0.5" dangerouslySetInnerHTML={{__html: r.d}}/>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="rounded-3xl p-6 md:p-8 text-center" style={{ background:'linear-gradient(100deg, #083E3E, #0A6E6E)' }}>
+        <h3 className="font-display font-extrabold text-[22px] text-white">Ready to start earning?</h3>
+        <p className="mt-1.5 text-[13px] text-white/85 max-w-md mx-auto leading-snug">
+          Onboarding takes about 20 minutes. We’ll review your application within 3 working days.
+        </p>
+        <div className="mt-4 flex justify-center">
+          <Btn variant="primary" size="lg" icon={<Ico.plus width="14" height="14"/>}>Apply now</Btn>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* =====================================================================
+   PROFILE — user account, preferences, account-level stats
+   ===================================================================== */
+function ScreenProfile() {
+  const [name, setName] = useState('Ali H. Peerally');
+  const [email, setEmail] = useState('ali@example.mu');
+  const [subsector, setSubsector] = useState('Accounting & audit');
+  const [income, setIncome] = useState('60,001–100,000');
+  const [age, setAge] = useState('31–40');
+
+  return (
+    <div className="space-y-5 anim-fade">
+      <h1 className="font-display font-extrabold text-[22px] text-ink">Profile</h1>
+
+      <div className="bg-white rounded-3xl ring-1 ring-black/5 p-5 md:p-6">
+        <div className="flex items-center gap-4">
+          <Avatar name={name} size={64} ring="#0A6E6E"/>
+          <div>
+            <div className="font-display font-bold text-[16px] text-ink">{name}</div>
+            <div className="text-[12px] text-neutral-500">{email}</div>
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Full name" v={name} onChange={setName}/>
+          <Field label="Email"     v={email} onChange={setEmail}/>
+
+          <Select label="Age band" v={age} onChange={setAge} opts={['18–30','31–40','41–50','51–65']}/>
+          <Select label="Monthly income (MUR)" v={income} onChange={setIncome}
+            opts={['Below 30,000','30,001–60,000','60,001–100,000','100,001–150,000','Above 150,000']}/>
+
+          {/* Industry */}
+          <div className="sm:col-span-2">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[12px] font-display font-semibold text-neutral-700">Your industry</span>
+
+            </div>
+            <select value={subsector} onChange={e=>setSubsector(e.target.value)}
+              className="w-full bg-cream rounded-xl ring-1 ring-black/10 px-4 py-3 font-body text-[14px] focus:ring-teal-700/40 focus:outline-none">
+              {SUBSECTORS.map(s => <option key={s}>{s}</option>)}
+            </select>
+            <p className="mt-1.5 text-[11px] text-neutral-500 leading-snug">
+              Used to surface relevant categories first (e.g. document drop-offs for legal &amp; accounting) and to tailor your time-saved estimates.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Personal stats — your impact this month */}
+      <div className="bg-white rounded-3xl ring-1 ring-black/5 p-5 md:p-6">
+        <div className="flex items-center gap-2 mb-3">
+          <h3 className="font-display font-bold text-[15px] text-ink">Your impact this month</h3>
+
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <Stat k="Tasks completed" v="6"/>
+          <Stat k="Time reclaimed" v="11h 25m"/>
+          <Stat k="In escrow now"  v={fmtRs(2430)}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, v, onChange }) {
+  return (
+    <label className="block">
+      <span className="text-[12px] font-display font-semibold text-neutral-700">{label}</span>
+      <input value={v} onChange={e=>onChange(e.target.value)}
+        className="mt-1 w-full bg-cream rounded-xl ring-1 ring-black/10 px-4 py-3 font-body text-[14px] focus:ring-teal-700/40 focus:outline-none"/>
+    </label>
+  );
+}
+function Select({ label, v, onChange, opts }) {
+  return (
+    <label className="block">
+      <span className="text-[12px] font-display font-semibold text-neutral-700">{label}</span>
+      <select value={v} onChange={e=>onChange(e.target.value)}
+        className="mt-1 w-full bg-cream rounded-xl ring-1 ring-black/10 px-4 py-3 font-body text-[14px] focus:ring-teal-700/40 focus:outline-none">
+        {opts.map(o => <option key={o}>{o}</option>)}
+      </select>
+    </label>
+  );
+}
+function Stat({ k, v }) {
+  return (
+    <div className="rounded-xl bg-cream ring-1 ring-black/5 px-3 py-2.5">
+      <div className="font-display font-extrabold text-[18px] text-ink">{v}</div>
+      <div className="text-[11px] text-neutral-600 leading-tight">{k}</div>
+    </div>
+  );
+}
+
+/* =====================================================================
+   MESSAGES
+   ===================================================================== */
+function ScreenMessages() {
+  return (
+    <div className="space-y-4 anim-fade">
+      <h1 className="font-display font-extrabold text-[22px] text-ink">Messages</h1>
+      <div className="bg-white rounded-3xl ring-1 ring-black/5 divide-y divide-black/5">
+        {TASKERS.slice(0,3).map((t,i) => (
+          <div key={t.id} className="p-4 flex items-center gap-3">
+            <Avatar name={t.name} size={42} ring={i===0?'#FF6B35':'#0A6E6E'}/>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-display font-bold text-[13.5px] text-ink">{t.name}</span>
+                <span className="text-[11px] text-neutral-400">· {i===0?'just now':i===1?'1h':'yesterday'}</span>
+              </div>
+              <div className="text-[12.5px] text-neutral-600 truncate">{
+                i===0?'On my way — should arrive around 14:10.' :
+                i===1?'Yes I can do that, no problem.' :
+                'Thanks! Will see you tomorrow.'
+              }</div>
+            </div>
+            {i===0 && <span className="w-2 h-2 rounded-full bg-coral"/>}
+          </div>
+        ))}
+      </div>
+      <div className="text-[11.5px] text-neutral-500 px-1">
+        Phone numbers are masked through TaskMate's relay until the booking is confirmed — see Trust &amp; safety.
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================================
+   APP root — routing & state
+   ===================================================================== */
+function App() {
+  const [route, setRoute] = useState({ name:'home' });   // {name, taskerId?, bookingId?}
+  const [showPost, setShowPost] = useState(false);
+  const [bookings, setBookings] = useState(seedBookings());
+  const [toast, setToast] = useState('');
+  const [lang, setLang] = useState('EN');
+
+  // Scroll to top whenever the user navigates to a different screen.
+  useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [route.name, route.taskerId, route.bookingId]);
+
+  const nav = (name, extra={}) => setRoute({ name, ...extra });
+
+  const handleSubmitTask = (form) => {
+    const id = 'b'+(bookings.length+1);
+    const cat = catById(form.catId);
+    const newB = {
+      id, cat: form.catId,
+      title: form.title || cat.label,
+      tasker: TASKERS[Math.floor(Math.random()*TASKERS.length)].name,
+      tierId: form.tierId,
+      status: 'Awaiting tasker',
+      fee: form.fee,
+      timeSavedMin: form.timeSavedMin,
+      when: 'Today, soon',
+      area: form.area,
+    };
+    setBookings([newB, ...bookings]);
+    setShowPost(false);
+    setToast('Task posted — taskers nearby being notified.');
+    nav('tasks');
+  };
+
+  let body = null;
+  switch (route.name) {
+    case 'home':
+      body = <ScreenHome onPost={()=>setShowPost(true)}
+                onPickCat={()=>setShowPost(true)}
+                onOpenSafety={()=>nav('safety')}
+                onOpenTasker={(id)=>nav('tasker',{ taskerId:id })}
+                lang={lang}/>;
+      break;
+    case 'tasker':
+      body = <ScreenTaskerProfile taskerId={route.taskerId}
+                onClose={()=>nav('home')}
+                onMessage={()=>nav('messages')}
+                onBook={()=>{ setShowPost(true); }}/>;
+      break;
+    case 'tasks':
+      body = <ScreenMyTasks bookings={bookings} onOpenBooking={(id)=>nav('booking',{ bookingId:id })}/>;
+      break;
+    case 'booking':
+      body = <ScreenBookingDetail bookingId={route.bookingId} bookings={bookings} onClose={()=>nav('tasks')}/>;
+      break;
+    case 'messages':
+      body = <ScreenMessages/>;
+      break;
+    case 'profile':
+      body = <ScreenProfile/>;
+      break;
+    case 'safety':
+      body = <ScreenSafety onClose={()=>nav('home')}/>;
+      break;
+    case 'taskers':
+      body = <ScreenForTaskers onClose={()=>nav('home')}/>;
+      break;
+    default:
+      body = <ScreenHome onPost={()=>setShowPost(true)} onPickCat={()=>setShowPost(true)} onOpenSafety={()=>nav('safety')} onOpenTasker={(id)=>nav('tasker',{ taskerId:id })} lang={lang}/>;
+  }
+
+  return (
+    <>
+      <AppShell active={route.name} onNav={(n)=>nav(n)} onPost={()=>setShowPost(true)}
+        lang={lang} setLang={setLang}>
+        {body}
+      </AppShell>
+
+      {showPost && <ScreenPostTask onClose={()=>setShowPost(false)} onSubmit={handleSubmitTask}/>}
+      <Toast msg={toast} onClose={()=>setToast('')}/>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
